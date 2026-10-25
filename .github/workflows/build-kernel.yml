@@ -5,8 +5,9 @@ name: Build Kernel
 # so it gets its own workflow instead of riding along with the full package
 # chain in build-sheng-rpms.yml.
 #
-# The device boots the Android way (boot.img containing Image.gz-dtb), NOT
-# via UEFI, so the boot_*.img files from mkbootimg are the primary artifacts.
+# The device boots via U-Boot: sysboot reads /extlinux/extlinux.conf off the
+# ESP and loads the uncompressed Image + DTB with booti, so the RPM is the
+# primary artifact and there is no boot image to flash.
 
 on:
   workflow_dispatch:
@@ -23,7 +24,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build kernel RPM and boot images
+    name: Build kernel RPM
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     container:
@@ -50,14 +51,11 @@ jobs:
           echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
 
       # Source0 (upstream tag tarball) and Source1 (sm8550.config) are URLs
-      # in the spec; the remaining sources are local files copied below.
+      # in the spec; the remaining source is a local file copied below.
       - name: Download spec sources
         run: |
           spectool -g -R kernel-sm8550/kernel-sm8550.spec
-          cp scripts/mkbootimg ~/rpmbuild/SOURCES/mkbootimg
           cp kernel-sm8550/extra-sm8550.config ~/rpmbuild/SOURCES/
-          cp kernel-sm8550/ukify.conf ~/rpmbuild/SOURCES/
-          cp kernel-sm8550/99-sheng-generic.conf ~/rpmbuild/SOURCES/
 
       # ================================================================
       # ccache: the same pool as build-sheng-rpms.yml, so a kernel warmed up by
@@ -99,16 +97,13 @@ jobs:
             echo "### Kernel build result"
             echo ""
             echo "- kernel release: \`${KREL}\`"
-            ls -lh ~/rpmbuild/BUILD/boot_*.img || true
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # boot_*.img are produced in %build but deliberately not packaged in
-      # the RPM (flashing is a manual, operator-driven step); collect them
-      # together with the RPM.
+      # The RPM is the only artifact: U-Boot boots the kernel off the ESP, so
+      # there is no boot image to produce or flash manually.
       - name: Collect artifacts
         run: |
           mkdir -p ~/rpmbuild/out
-          cp ~/rpmbuild/BUILD/boot_*.img ~/rpmbuild/out/
           cp ~/rpmbuild/RPMS/aarch64/*.rpm ~/rpmbuild/out/
           ls -lh ~/rpmbuild/out/
 

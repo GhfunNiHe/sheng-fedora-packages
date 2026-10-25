@@ -214,30 +214,16 @@ jobs:
       - name: "Build: kernel-sm8550"
         run: |
           mkdir -p ~/.ccache
-          cp scripts/mkbootimg ~/rpmbuild/SOURCES/mkbootimg
           cp kernel-sm8550/extra-sm8550.config ~/rpmbuild/SOURCES/
-          cp kernel-sm8550/ukify.conf kernel-sm8550/99-sheng-generic.conf ~/rpmbuild/SOURCES/
           dnf builddep -y ./kernel-sm8550/kernel-sm8550.spec
           rpmbuild -ba --nodebuginfo ./kernel-sm8550/kernel-sm8550.spec
           createrepo_c --update ~/rpmbuild/RPMS
           echo "=== ccache stats ==="
           ccache --show-stats
 
-          # Collect boot images for separate release
-          mkdir -p ~/rpmbuild/images
-          cp ~/rpmbuild/BUILD/boot_*.img ~/rpmbuild/images/ 2>/dev/null || true
-
       # ================================================================
       # Upload
       # ================================================================
-      - name: Upload images
-        uses: actions/upload-artifact@v7
-        with:
-          name: sheng-images
-          path: ~/rpmbuild/images/**
-          retention-days: 14
-          if-no-files-found: warn
-
       - name: Upload RPMs
         uses: actions/upload-artifact@v7
         with:
@@ -294,21 +280,12 @@ jobs:
           name: sheng-rpms
           path: rpms
 
-      - name: Download images
-        uses: actions/download-artifact@v8
-        with:
-          name: sheng-images
-          path: images
-        continue-on-error: true
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: sheng-${{ env.SHORT_SHA }}
           name: Sheng Packages (${{ env.SHORT_SHA }})
-          files: |
-            rpms/**/*.rpm
-            images/**
+          files: rpms/**/*.rpm
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
