@@ -22,7 +22,11 @@ indicator with PipeWire.
 %autosetup -n %{name}-%{version}
 
 %build
-%make_build CC=gcc
+# Do not hardcode CC=gcc here: the build environment sets CC="ccache gcc", and
+# a command-line assignment on %make_build wins over the environment, which is
+# exactly how this package used to bypass ccache. Keep the gcc fallback for a
+# plain local rpmbuild that runs without the CI environment.
+%make_build CC="${CC:-gcc}"
 
 %install
 # Manually install since the Makefile uses /usr prefix

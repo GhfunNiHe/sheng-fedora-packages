@@ -49,7 +49,10 @@ objcopy --redefine-sym recv_ioctl=mink_recv_ioctl \
 ar rcs libminkadaptor-fixed.a mink_adaptor.c.o supplicant.c.o syscall.S.o
 
 cd "%{_builddir}/%{name}-%{version}"
-gcc -O2 -DNDEBUG -Wall -Wextra -fPIC -shared -pthread \
+# ${CC:-gcc} unquoted on purpose: the build environment sets CC="ccache gcc",
+# which has to expand to two words. This compile used to call gcc directly and
+# was the one object in the tree that never reached the cache.
+${CC:-gcc} -O2 -DNDEBUG -Wall -Wextra -fPIC -shared -pthread \
     -Wl,-soname,libfpc1553-qtee.so -Wl,-z,relro -Wl,-z,now \
     -Ibackend/include -Ithird_party/mink/include -Ithird_party/QCBOR/inc \
     -o "%{fingerprint_build_dir}/libfpc1553-qtee.so" \
@@ -72,7 +75,12 @@ install -m 0644 backend/include/*.h "%{fingerprint_build_dir}/backend/"
 # -------------------------------------------------------------------
 # 2. Build patched libfprint (private install, fpc1553 driver only)
 # -------------------------------------------------------------------
-export CCACHE_DISABLE=1
+# ccache stays ON here. It used to carry an `export CCACHE_DISABLE=1`, which
+# turned the largest compile in this package into a guaranteed miss on every
+# run. Nothing in this build is hostile to ccache: `meson setup` takes the
+# compiler from the environment, --buildtype=release --strip do not change the
+# object files, and the absolute -I/%{fingerprint_build_dir} paths only make
+# the hash version-specific, never wrong.
 
 mkdir -p "%{fingerprint_build_dir}/src"
 tar -xf %{SOURCE1} -C "%{fingerprint_build_dir}/src" --strip-components=1

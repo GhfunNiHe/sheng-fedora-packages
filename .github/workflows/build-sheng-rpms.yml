@@ -21,24 +21,37 @@ jobs:
     container:
       image: fedora:latest
     env:
-      # The packages built with plain make go through ccache as well:
+      # Every compile goes through ccache: meson does not detect ccache by
+      # itself (mesonbuild/envconfig.py never calls detect_compiler_cache()
+      # any more), it honours CC/CXX from the environment, so these two lines
+      # are what put libssc and iio-sensor-proxy-ssc into the cache.
       # sheng-devauth's Makefile compiles with $(CC) and sets no CC of its own
       # (so an env CC beats make's built-in default), xiaomi-sheng-thp's uses
       # $(CXX) behind a `CXX ?= g++`. The kernel spec is not affected: every
       # make call in it passes CC="ccache clang" on the command line, and a
       # command-line assignment wins over the environment.
+      #
+      # The two packages that used to punch holes in this: the keyboard helper
+      # passed CC=gcc on the %make_build line (deleted) and the fingerprint
+      # spec exported CCACHE_DISABLE=1 plus a bare `gcc` call (both fixed).
       CC: ccache gcc
       CXX: ccache g++
       # kernel-sm8550.spec would default to 10G, which is GitHub's entire
       # per-repository cache budget: one kernel cache would evict everything.
       CCACHE_MAXSIZE: 4G
+      # Same two settings the kernel spec already exports, hoisted to the job
+      # so the meson/make packages benefit as well: __FILE__ and the CWD only
+      # differ per version directory, which would otherwise cost a hit.
+      CCACHE_SLOPPINESS: file_macro,locale,time_macros
+      CCACHE_NOHASHDIR: 'true'
 
     steps:
       - name: Install build tools
         run: |
-          # ccache is installed up front (the kernel spec would pull it in by
-          # itself, but only in the last phase): meson picks ccache up when it
-          # is in PATH, so libssc and iio-sensor-proxy-ssc compile through it.
+          # ccache is installed up front rather than left to the kernel spec's
+          # BuildRequires, which only pulls it in for the last phase: the
+          # meson and plain-make packages compile long before that and need the
+          # binary on PATH for the CC="ccache gcc" above to resolve.
           dnf install -y rpmdevtools dnf-plugins-core createrepo_c rpm-sign systemd-rpm-macros ccache
 
       - name: Checkout
@@ -240,6 +253,15 @@ jobs:
           path: ~/rpmbuild/SRPMS/**/*.src.rpm
           retention-days: 14
           if-no-files-found: error
+
+      # Always report the cache state: with the split restore/save the numbers
+      # in this step are what tells a "cold" run apart from a regression that
+      # quietly stopped caching (which is what the two spec fixes above were).
+      - name: ccache stats
+        if: always()
+        run: |
+          ccache --show-stats --verbose 2>/dev/null || ccache --show-stats || true
+          du -sh "$HOME/.ccache" 2>/dev/null || true
 
       # Whatever the job compiled stays cached even when a build above failed
       # (see the note on the restore step). The key is this run's, so this only
